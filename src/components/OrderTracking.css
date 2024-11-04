@@ -1,0 +1,27 @@
+.tracking-container {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 20px;
+    text-align: center;
+  }
+  
+  .tracking-title {
+    font-size: 1.8em;
+    margin-bottom: 20px;
+  }
+  
+  .tracking-info {
+    font-size: 1.1em;
+    color: #555;
+    margin-bottom: 20px;
+  }
+  
+  .tracking-status {
+    background-color: #f8f9fa;
+    padding: 15px 20px;
+    border: 1px solid #ddd;
+    border-radius: 8px;
+    font-size: 1.1em;
+  }
+  

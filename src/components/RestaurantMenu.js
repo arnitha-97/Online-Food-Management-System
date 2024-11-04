@@ -54,14 +54,14 @@ const RestaurantMenu = ({ addToCart, cartItems }) => {
         {filteredItems.map(item => (
           <div key={item.menu_item_id} className="menu-item">
             <h3>{item.item_name}</h3>
-            <p className="description">{item.description}</p>
+            <p className="description">{item.description || "Description not available"}</p>
             <p className="price">
               {item.price != null && !isNaN(item.price) 
                 ? `$${Number(item.price).toFixed(2)}` 
                 : 'Price not available'}
             </p>
-            <p className={`status ${item.availability.toLowerCase()}`}>
-              {item.availability}
+            <p className={`status ${item.availability?.toLowerCase() || 'unavailable'}`}>
+              {item.availability || 'Unavailable'}
             </p>
             <button className="add-to-cart" onClick={() => handleAddToCart(item)}>
               <Plus size={16} />
@@ -72,8 +72,11 @@ const RestaurantMenu = ({ addToCart, cartItems }) => {
       </div>
       {notification && (
         <div className="notification">
-          {notification}
-          <Link to="/cart" className="checkout-link">Proceed to Checkout</Link>
+          <p>{notification}</p>
+          <div className="notification-buttons">
+            <Link to="/cart" className="notification-button">View Cart</Link>
+            <Link to="/checkout" className="notification-button">Proceed to Checkout</Link>
+          </div>
         </div>
       )}
     </div>

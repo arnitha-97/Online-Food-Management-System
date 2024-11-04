@@ -3,7 +3,6 @@ import axios from 'axios';
 import { useNavigate } from 'react-router-dom'; // Import useNavigate
 import './Login.css';
 
-
 const Login = () => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -17,6 +16,9 @@ const Login = () => {
       setMessage(response.data.message);
       
       if (response.status === 200) {
+        // Store user ID in local storage
+        localStorage.setItem('userId', response.data.user_id); // Store user_id from response
+        console.log(response.data.user_id);
         // Navigate to the RestaurantListing component on successful login
         navigate('/restaurants');
       }
