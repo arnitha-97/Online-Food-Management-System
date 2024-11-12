@@ -2,23 +2,28 @@ import React, { useState } from 'react'
 import { QRCodeCanvas } from 'qrcode.react'
 import { ArrowRight, Loader2 } from 'lucide-react'
 import axios from 'axios'
+import { useNavigate } from 'react-router-dom'; // Import useNavigate
 import './PaymentPage.css'
 
 export default function PaymentPage({ orderId }) {
   const [isLoading, setIsLoading] = useState(false)
-  const [orderStatus, setOrderStatus] = useState('pending')
+  const navigate = useNavigate(); // Initialize useNavigate
 
   const handleTrackOrder = async () => {
     try {
-      setIsLoading(true)
-      const response = await axios.post(`http://localhost:5000/order/${orderId}/track`)
+      setIsLoading(true);
+      const order_id=localStorage.getItem('order_id')
+      const response = await axios.get(`http://localhost:5000/order/${order_id}/track`);
       if (response.data.status) {
-        setOrderStatus(response.data.status)
+        // Navigate to OrderTrackingPage with the orderId
+        navigate(`/order/${order_id}/track`, { 
+    
+        });
       }
     } catch (error) {
-      console.error('Error updating order status:', error)
+      console.error('Error tracking order:', error);
     } finally {
-      setIsLoading(false)
+      setIsLoading(false);
     }
   }
 
@@ -27,7 +32,7 @@ export default function PaymentPage({ orderId }) {
       <div className="payment-container">
         <div className="payment-header">
           <h1 className="title">Scan to Pay</h1>
-          <div className="status-badge">{orderStatus}</div>
+          <div className="status-badge">Pending</div>
         </div>
         
         <div className="qr-wrapper">

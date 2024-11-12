@@ -79,7 +79,7 @@ const Checkout = ({ clearCart }) => {
   
     setLoading(true);
     try {
-      // Log the order details for debugging
+      // Process each item in the cart as an individual order
       for (const item of cartItems) {
         const orderData = {
           user_id: localStorage.getItem('userId'),
@@ -88,8 +88,18 @@ const Checkout = ({ clearCart }) => {
           quantity: item.quantity,
           total: item.price * item.quantity,
         };
-        console.log("Order Data:", orderData); // Add this line to log the order data
-        await axios.post('http://localhost:5000/order/create', orderData);
+        console.log("Order Data:", orderData); // Log the order data for debugging
+        
+        // Use POST request to create the order
+        const response = await axios.post('http://localhost:5000/order/create', orderData);
+        
+        if (response.data && response.data.status_code === 200) {
+          localStorage.setItem('order_id', response.data.order_id); 
+          console.log("order_id:", response.data.order_id);
+        } else {
+          console.error("Unexpected response data:", response.data);
+          alert('Failed to create order. Please try again.');
+        }
       }
   
       clearCart();
@@ -105,6 +115,7 @@ const Checkout = ({ clearCart }) => {
       setLoading(false);
     }
   };
+  
   
 
   return (

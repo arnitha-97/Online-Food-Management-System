@@ -1,4 +1,5 @@
 import React from 'react';
+import axios from 'axios';
 import { ShoppingCart, Minus, Plus, Trash2 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import './Cart.css';
@@ -7,22 +8,41 @@ const Cart = ({ cartItems, setCartItems }) => {
   const navigate = useNavigate();
 
   // Function to update quantity for a given item
-  const updateQuantity = (itemId, newQuantity) => {
+  const updateQuantity = async (itemId, newQuantity) => {
     if (newQuantity <= 0) {
       // Remove item if quantity is set to zero or less
-      setCartItems(prevItems => prevItems.filter(item => item.menu_item_id !== itemId));
+      await removeItem(itemId);
     } else {
       setCartItems(prevItems =>
         prevItems.map(item =>
           item.menu_item_id === itemId ? { ...item, quantity: newQuantity } : item
         )
       );
+
+      // Call API to update quantity
+      try {
+        await axios.put('http://localhost:5000/cart/update', {
+          cart_id: itemId, // Assuming itemId corresponds to cart_id
+          quantity: newQuantity
+        });
+      } catch (error) {
+        console.error('Error updating cart:', error);
+      }
     }
   };
 
   // Function to remove an item from the cart
-  const removeItem = (itemId) => {
+  const removeItem = async (itemId) => {
     setCartItems(prevItems => prevItems.filter(item => item.menu_item_id !== itemId));
+
+    // Call API to remove the item
+    try {
+      await axios.delete('http://localhost:5000/cart/remove', {
+        data: { menu_item_id: itemId, user_id: 1 } // Replace with the actual user ID
+      });
+    } catch (error) {
+      console.error('Error removing item from cart:', error);
+    }
   };
 
   // Calculate total price of items in the cart

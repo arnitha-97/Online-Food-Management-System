@@ -6,7 +6,8 @@ import RestaurantListing from './components/RestaurantListing';
 import RestaurantMenu from './components/RestaurantMenu';
 import Cart from './components/cart';
 import Checkout from './components/Checkout';
-import PaymentPage from './components/PaymentPage'; // Import PaymentPage
+import PaymentPage from './components/PaymentPage';
+import TrackOrderPage from './components/TrackOrderPage'; // Import the tracking component
 import './App.css';
 
 const App = () => {
@@ -54,8 +55,12 @@ const App = () => {
             element={<Checkout cartItems={cartItems} total={calculateTotal()} clearCart={clearCart} />} 
           />
           <Route 
-            path="/payment" // Add a route for the PaymentPage
+            path="/payment" 
             element={<PaymentPage />} 
+          />
+          <Route 
+            path="/order/:orderId/track" 
+            element={<TrackOrderPage />} // Use the new TrackOrderPage component here
           />
         </Routes>
       </div>

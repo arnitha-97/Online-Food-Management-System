@@ -13,9 +13,9 @@ const RestaurantListing = ({ cartItems = [] }) => {
     const fetchRestaurants = async () => {
       try {
         const response = await axios.get('http://localhost:5000/restaurants');
-        const formattedRestaurants = response.data.map(restaurant => ({
+        const formattedRestaurants = response.data.map((restaurant) => ({
           ...restaurant,
-          rating: Number(restaurant.rating)
+          rating: Number(restaurant.rating),
         }));
         setRestaurants(formattedRestaurants);
       } catch (error) {
@@ -30,7 +30,7 @@ const RestaurantListing = ({ cartItems = [] }) => {
     navigate(`/restaurants/${restaurantId}/menu`);
   };
 
-  const filteredRestaurants = restaurants.filter(restaurant =>
+  const filteredRestaurants = restaurants.filter((restaurant) =>
     restaurant.name.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
@@ -42,7 +42,9 @@ const RestaurantListing = ({ cartItems = [] }) => {
           <div className="nav-icons">
             <Link to="/cart" className="nav-icon cart-icon">
               <ShoppingCart size={24} />
-              {cartItems.length > 0 && <span className="cart-count">{cartItems.length}</span>}
+              {cartItems.length > 0 && (
+                <span className="cart-count">{cartItems.length}</span>
+              )}
             </Link>
           </div>
         </div>
@@ -61,7 +63,7 @@ const RestaurantListing = ({ cartItems = [] }) => {
           </div>
         </div>
         <div className="restaurant-grid">
-          {filteredRestaurants.map(restaurant => (
+          {filteredRestaurants.map((restaurant) => (
             <div key={restaurant.restaurant_id} className="restaurant-card">
               <div className="restaurant-info">
                 <h2 className="restaurant-name">{restaurant.name}</h2>
@@ -75,7 +77,7 @@ const RestaurantListing = ({ cartItems = [] }) => {
                   <MapPin size={16} className="icon" />
                   {restaurant.address}, {restaurant.city}
                 </p>
-                <button 
+                <button
                   className="order-button"
                   onClick={() => handleOrderNowClick(restaurant.restaurant_id)}
                 >
