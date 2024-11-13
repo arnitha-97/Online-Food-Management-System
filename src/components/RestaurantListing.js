@@ -194,7 +194,7 @@ const RestaurantListing = ({ cartItems = [] }) => {
                   <div className="restaurant-details">
                     <div className="rating">
                       <Star className="star-icon" />
-                      <span>{restaurant.rating.toFixed(1)}</span>
+                      <span>{restaurant.rating}</span>
                     </div>
                     <div className="location">
                       <MapPin className="location-icon" />

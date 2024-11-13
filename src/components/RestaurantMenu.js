@@ -1,36 +1,49 @@
-import React, { useState, useEffect } from 'react'
-import { useParams, Link } from 'react-router-dom'
-import axios from 'axios'
-import { Plus, ShoppingCart, Search } from 'lucide-react'
-import './RestaurantMenu.css'
+import React, { useState, useEffect } from 'react';
+import { useParams, Link } from 'react-router-dom';
+import axios from 'axios';
+import { Plus, ShoppingCart, Search } from 'lucide-react';
+import './RestaurantMenu.css';
 
-export default function RestaurantMenu({ addToCart, cartItems }) {
-  const { restaurantId } = useParams()
-  const [menuItems, setMenuItems] = useState([])
-  const [searchTerm, setSearchTerm] = useState('')
-  const [notification, setNotification] = useState(null)
+export default function RestaurantMenu({ addToCart, cartItems, setCartItems }) {
+  const { restaurantId } = useParams();
+  const [menuItems, setMenuItems] = useState([]);
+  const [searchTerm, setSearchTerm] = useState('');
+  const [notification, setNotification] = useState(null);
 
   useEffect(() => {
     const fetchMenuItems = async () => {
       try {
-        const response = await axios.get(`http://localhost:5000/restaurants/${restaurantId}/menu`)
-        setMenuItems(response.data)
+        const response = await axios.get(`http://localhost:5000/restaurants/${restaurantId}/menu`);
+        setMenuItems(response.data);
       } catch (error) {
-        console.error('Error fetching menu items:', error)
+        console.error('Error fetching menu items:', error);
       }
-    }
-    fetchMenuItems()
-  }, [restaurantId])
+    };
+    fetchMenuItems();
+  }, [restaurantId]);
 
   const filteredItems = menuItems.filter(item =>
     item.item_name.toLowerCase().includes(searchTerm.toLowerCase())
-  )
+  );
 
-  const handleAddToCart = (item) => {
-    addToCart(item)
-    setNotification('Item added to cart')
-    setTimeout(() => setNotification(null), 3000)
-  }
+  const handleAddToCart = async (item) => {
+    const userId = localStorage.getItem('userId');
+    try {
+      await axios.post('http://localhost:5000/cart/add', {
+        user_id: userId,
+        menu_item_id: item.menu_item_id,
+        quantity: 1
+      });
+      setNotification('Item added to cart');
+      setTimeout(() => setNotification(null), 3000);
+
+      // Refresh cartItems to reflect changes
+      const cartResponse = await axios.get(`http://localhost:5000/cart/items?user_id=${userId}`);
+      setCartItems(cartResponse.data);
+    } catch (error) {
+      console.error('Error adding item to cart:', error);
+    }
+  };
 
   return (
     <div className="restaurant-menu">
@@ -42,7 +55,7 @@ export default function RestaurantMenu({ addToCart, cartItems }) {
             {cartItems.length > 0 && <span className="cart-count">{cartItems.length}</span>}
           </Link>
         </nav>
-        
+
         <div className="search-bar">
           <Search size={20} className="search-icon" />
           <input
@@ -93,5 +106,5 @@ export default function RestaurantMenu({ addToCart, cartItems }) {
         </div>
       )}
     </div>
-  )
+  );
 }

@@ -161,13 +161,12 @@ def get_menu_items(restaurant_id):
         return jsonify({'error': str(e)}), 500
     finally:
         connection.close()
-
 @app.route('/cart/items', methods=['GET'])
 def get_cart_items():
     user_id = request.args.get('user_id')
     if not user_id:
         return jsonify({'error': 'user_id is required'}), 400
-        
+
     try:
         connection = get_db_connection()
         with connection.cursor() as cursor:
@@ -175,31 +174,22 @@ def get_cart_items():
             SELECT c.cart_id, mi.item_name, mi.description, o.price, c.quantity
             FROM cart c
             JOIN menu_items mi ON c.menu_item_id = mi.menu_item_id
-            JOIN offers o ON c.menu_item_id = o.menu_item_id
+            JOIN offers o ON c.menu_item_id = o.menu_item_id AND c.restaurant_id = o.restaurant_id
             WHERE c.user_id = %s
             """
             cursor.execute(sql, (user_id,))
             cart_items = cursor.fetchall()
 
-            # If there are no items in the cart
             if not cart_items:
                 return jsonify({'message': 'Cart is empty'}), 200
-            
-            # Convert fetched data to a more readable format
-            cart_items_list = [{
-                'cart_id': item[0],
-                'item_name': item[1],
-                'description': item[2],
-                'price': item[3],
-                'quantity': item[4]
-            } for item in cart_items]
 
-            return jsonify(cart_items_list), 200
+            return jsonify(cart_items), 200
     except Exception as e:
         logging.error(f"Error fetching cart items: {e}")
         return jsonify({'error': 'Failed to fetch cart items. Please try again later.'}), 500
     finally:
         connection.close()
+
 
 @app.route('/cart/add', methods=['POST'])
 def add_to_cart():
@@ -214,30 +204,35 @@ def add_to_cart():
     try:
         connection = get_db_connection()
         with connection.cursor() as cursor:
-            # Check if the item already exists in the cart
-            cursor.execute("SELECT * FROM cart WHERE user_id = %s AND menu_item_id = %s", (user_id, menu_item_id))
-            existing_item = cursor.fetchone()
-            
-            if existing_item:
-                # Update the existing item's quantity
-                new_quantity = existing_item[2] + quantity    # Assuming quantity is the third column
-                cursor.execute(
-                    "UPDATE cart SET quantity = %s WHERE user_id = %s AND menu_item_id = %s",
-                    (new_quantity, user_id, menu_item_id)
-                )
-            else:
-                # Insert a new item
-                cursor.execute(
-                    "INSERT INTO cart (user_id, menu_item_id, quantity) VALUES (%s, %s, %s)",
-                    (user_id, menu_item_id, quantity)
-                )
+            # Fetch the restaurant_id for the given menu_item_id
+            cursor.execute("SELECT restaurant_id FROM offers WHERE menu_item_id = %s LIMIT 1", (menu_item_id,))
+            result = cursor.fetchone()
+            if not result:
+                return jsonify({'error': 'Invalid menu item; no associated restaurant found'}), 400
+            restaurant_id = result['restaurant_id']
+
+            # Attempt to insert or update the item in the cart
+            cursor.execute(
+                """
+                INSERT INTO cart (user_id, menu_item_id, restaurant_id, quantity)
+                VALUES (%s, %s, %s, %s)
+                ON DUPLICATE KEY UPDATE quantity = quantity + %s
+                """,
+                (user_id, menu_item_id, restaurant_id, quantity, quantity)
+            )
             connection.commit()
-        return jsonify({'message': 'Item added to cart'}), 201
+        return jsonify({'message': 'Item added to cart', 'status': 202})
     except Exception as e:
-        logging.error(f"Error adding to cart: {e}")
-        return jsonify({'error': str(e)}), 500
+        # Check if the error is due to the trigger enforcing a one-restaurant rule
+        if '45000' in str(e):  # This indicates the custom error signal from the trigger
+            logging.error("One-restaurant constraint triggered: User tried to add items from different restaurants")
+            return jsonify({'error': 'You can only add items from one restaurant to the cart at a time.'}), 400
+        else:
+            logging.error(f"Error adding to cart: {e}")
+            return jsonify({'error': str(e), 'status': 500})
     finally:
         connection.close()
+
 
 @app.route('/cart/remove', methods=['DELETE'])
 def remove_from_cart():

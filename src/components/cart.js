@@ -1,44 +1,63 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import axios from 'axios';
 import { ShoppingCart, Minus, Plus, Trash2 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import './Cart.css';
 
-const Cart = ({ cartItems, setCartItems }) => {
+const Cart = () => {
+  const [cartItems, setCartItems] = useState([]);
   const navigate = useNavigate();
 
-  // Function to update quantity for a given item
-  const updateQuantity = async (itemId, newQuantity) => {
-    if (newQuantity <= 0) {
-      // Remove item if quantity is set to zero or less
-      await removeItem(itemId);
-    } else {
-      setCartItems(prevItems =>
-        prevItems.map(item =>
-          item.menu_item_id === itemId ? { ...item, quantity: newQuantity } : item
-        )
-      );
-
-      // Call API to update quantity
-      try {
-        await axios.put('http://localhost:5000/cart/update', {
-          cart_id: itemId, // Assuming itemId corresponds to cart_id
-          quantity: newQuantity
-        });
-      } catch (error) {
-        console.error('Error updating cart:', error);
+  // Fetch cart data on component mount
+  useEffect(() => {
+    const getData = async () => {
+      const userId = localStorage.getItem('userId');
+      if (userId) {
+        try {
+          const cartResponse = await axios.get(`http://localhost:5000/cart/items?user_id=${userId}`);
+          setCartItems(cartResponse.data);
+          console.log(cartResponse)
+        } catch (error) {
+          console.error('Error fetching cart items:', error);
+        }
       }
+    };
+    getData();
+  }, []);
+
+const updateQuantity = async (cartId, newQuantity) => {
+  if (newQuantity <= 0) {
+    await removeItem(cartId);
+  } else {
+    setCartItems(prevItems => {
+      const updatedItems = prevItems.map(item => {
+        if (item.cart_id === cartId) {
+          return { ...item, quantity: newQuantity }; // Update the quantity for the specific item
+        }
+        return item; // Leave other items unchanged
+      });
+      return updatedItems;
+    });
+
+    try {
+      await axios.put('http://localhost:5000/cart/update', {
+        cart_id: cartId,
+        quantity: newQuantity
+      });
+    } catch (error) {
+      console.error('Error updating cart:', error);
     }
-  };
+  }
+};
+
 
   // Function to remove an item from the cart
   const removeItem = async (itemId) => {
+    const userId = localStorage.getItem('userId');
     setCartItems(prevItems => prevItems.filter(item => item.menu_item_id !== itemId));
-
-    // Call API to remove the item
     try {
       await axios.delete('http://localhost:5000/cart/remove', {
-        data: { menu_item_id: itemId, user_id: 1 } // Replace with the actual user ID
+        data: { menu_item_id: itemId, user_id: userId }
       });
     } catch (error) {
       console.error('Error removing item from cart:', error);
@@ -48,7 +67,7 @@ const Cart = ({ cartItems, setCartItems }) => {
   // Calculate total price of items in the cart
   const total = cartItems.reduce((sum, item) => {
     const itemPrice = parseFloat(item.price) || 0;
-    const itemQuantity = parseInt(item.quantity) || 1; // Default to 1 if quantity is invalid
+    const itemQuantity = parseInt(item.quantity) || 1;
     return sum + (itemPrice * itemQuantity);
   }, 0);
 
@@ -69,18 +88,18 @@ const Cart = ({ cartItems, setCartItems }) => {
       ) : (
         <>
           <div className="cart-items">
-            {cartItems.map(item => (
+            {cartItems.map((item,index) => (
               <div key={item.menu_item_id} className="cart-item">
                 <div className="item-details">
                   <h3>{item.item_name}</h3>
                   <p className="item-price">${parseFloat(item.price).toFixed(2) || '0.00'}</p>
                 </div>
                 <div className="quantity-control">
-                  <button onClick={() => updateQuantity(item.menu_item_id, (parseInt(item.quantity) || 1) - 1)}>
+                  <button onClick={() => updateQuantity(item.cart_id, (parseInt(item.quantity) || 1) - 1)}>
                     <Minus size={16} />
                   </button>
                   <span>{parseInt(item.quantity) || 1}</span>
-                  <button onClick={() => updateQuantity(item.menu_item_id, (parseInt(item.quantity) || 1) + 1)}>
+                  <button onClick={() => updateQuantity(item.cart_id, (parseInt(item.quantity) || 1) + 1)}>
                     <Plus size={16} />
                   </button>
                 </div>
