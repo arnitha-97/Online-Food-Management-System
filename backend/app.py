@@ -171,7 +171,7 @@ def get_cart_items():
         connection = get_db_connection()
         with connection.cursor() as cursor:
             sql = """
-            SELECT c.cart_id, mi.item_name, mi.description, o.price, c.quantity
+            SELECT c.cart_id, c.menu_item_id,mi.item_name, mi.description, o.price, c.quantity
             FROM cart c
             JOIN menu_items mi ON c.menu_item_id = mi.menu_item_id
             JOIN offers o ON c.menu_item_id = o.menu_item_id AND c.restaurant_id = o.restaurant_id
@@ -222,11 +222,11 @@ def add_to_cart():
             )
             connection.commit()
         return jsonify({'message': 'Item added to cart', 'status': 202})
-    except Exception as e:
+    except pymysql.MySQLError  as e:
         # Check if the error is due to the trigger enforcing a one-restaurant rule
-        if '45000' in str(e):  # This indicates the custom error signal from the trigger
+        if e.args[0]==1644:  # This indicates the custom error signal from the trigger
             logging.error("One-restaurant constraint triggered: User tried to add items from different restaurants")
-            return jsonify({'error': 'You can only add items from one restaurant to the cart at a time.'}), 400
+            return jsonify({'error': 'You can only add items from one restaurant to the cart at a time.'}),400
         else:
             logging.error(f"Error adding to cart: {e}")
             return jsonify({'error': str(e), 'status': 500})
@@ -234,13 +234,16 @@ def add_to_cart():
         connection.close()
 
 
+
 @app.route('/cart/remove', methods=['DELETE'])
 def remove_from_cart():
     data = request.json
+    print(data)
     menu_item_id = data.get('menu_item_id')
     user_id = data.get('user_id')
 
     if not menu_item_id or not user_id:
+        logging.error(f"Missing data in request: menu_item_id={menu_item_id}, user_id={user_id}")
         return jsonify({'error': 'menu_item_id and user_id are required'}), 400
 
     try:

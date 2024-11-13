@@ -29,21 +29,33 @@ export default function RestaurantMenu({ addToCart, cartItems, setCartItems }) {
   const handleAddToCart = async (item) => {
     const userId = localStorage.getItem('userId');
     try {
-      await axios.post('http://localhost:5000/cart/add', {
-        user_id: userId,
-        menu_item_id: item.menu_item_id,
-        quantity: 1
-      });
-      setNotification('Item added to cart');
-      setTimeout(() => setNotification(null), 3000);
+        const response = await axios.post('http://localhost:5000/cart/add', {
+            user_id: userId,
+            menu_item_id: item.menu_item_id,
+            quantity: 1
+        });
 
-      // Refresh cartItems to reflect changes
-      const cartResponse = await axios.get(`http://localhost:5000/cart/items?user_id=${userId}`);
-      setCartItems(cartResponse.data);
+        if (response.status === 202) {
+            setNotification('Item added to cart');
+        }
+        setTimeout(() => setNotification(null), 3000);
+
+        // Refresh cartItems to reflect changes
+        const cartResponse = await axios.get(`http://localhost:5000/cart/items?user_id=${userId}`);
+        setCartItems(cartResponse.data);
     } catch (error) {
-      console.error('Error adding item to cart:', error);
+        if (error.response && error.response.status === 400) {
+            setNotification(error.response.data.error);
+        } else {
+            console.error('Error adding item to cart:', error);
+            setNotification('Error adding item to cart.');
+        }
+        setTimeout(() => setNotification(null), 3000); // Clear notification after 3 seconds
     }
-  };
+};
+
+
+
 
   return (
     <div className="restaurant-menu">

@@ -44,7 +44,7 @@ const App = () => {
           <Route path="/restaurants" element={<RestaurantListing cartItems={cartItems} />} />
           <Route 
             path="/restaurants/:restaurantId/menu" 
-            element={<RestaurantMenu addToCart={addToCart} cartItems={cartItems} />} 
+            element={<RestaurantMenu addToCart={addToCart} cartItems={cartItems} setCartItems={setCartItems}  />} 
           />
           <Route 
             path="/cart" 

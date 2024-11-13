@@ -15,6 +15,7 @@ const Cart = () => {
       if (userId) {
         try {
           const cartResponse = await axios.get(`http://localhost:5000/cart/items?user_id=${userId}`);
+          console.log(cartResponse.data)
           setCartItems(cartResponse.data);
           console.log(cartResponse)
         } catch (error) {
@@ -52,17 +53,22 @@ const updateQuantity = async (cartId, newQuantity) => {
 
 
   // Function to remove an item from the cart
-  const removeItem = async (itemId) => {
-    const userId = localStorage.getItem('userId');
+const removeItem = async (itemId) => {
+  console.log('Removing item with menu_item_id:', itemId);
+  const userId = localStorage.getItem('userId');
+  
+  try {
+    await axios.delete('http://localhost:5000/cart/remove', {
+      headers: { 'Content-Type': 'application/json' },
+      data: { menu_item_id: itemId, user_id: userId }
+    });
+    
+    // After a successful backend response, update the state
     setCartItems(prevItems => prevItems.filter(item => item.menu_item_id !== itemId));
-    try {
-      await axios.delete('http://localhost:5000/cart/remove', {
-        data: { menu_item_id: itemId, user_id: userId }
-      });
-    } catch (error) {
-      console.error('Error removing item from cart:', error);
-    }
-  };
+  } catch (error) {
+    console.error('Error removing item from cart:', error);
+  }
+};
 
   // Calculate total price of items in the cart
   const total = cartItems.reduce((sum, item) => {
