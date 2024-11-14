@@ -167,3 +167,29 @@ BEGIN
 END //
 
 DELIMITER ;
+
+
+DELIMITER //
+
+CREATE TRIGGER cart_restriction_before_insert
+BEFORE INSERT ON cart
+FOR EACH ROW
+BEGIN
+    DECLARE existing_restaurant_id INT;
+
+    -- Get the restaurant_id for any existing item in the user's cart
+    SELECT restaurant_id INTO existing_restaurant_id
+    FROM cart
+    WHERE user_id = NEW.user_id
+    LIMIT 1;
+
+    -- Check if the existing restaurant_id is different from the new item's restaurant_id
+    IF existing_restaurant_id IS NOT NULL AND existing_restaurant_id != NEW.restaurant_id THEN
+        SIGNAL SQLSTATE '45000'
+        SET MESSAGE_TEXT = 'Cart can only contain items from one restaurant at a time.';
+    END IF;
+END //
+
+DELIMITER ;
+
+
