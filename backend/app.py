@@ -161,6 +161,87 @@ def get_menu_items(restaurant_id):
         return jsonify({'error': str(e)}), 500
     finally:
         connection.close()
+@app.route('/cart/add', methods=['POST'])
+def add_to_cart():
+    data = request.json
+    user_id = data.get('user_id')
+    menu_item_id = data.get('menu_item_id')
+    restaurant_id = data.get('restaurant_id')  # Get restaurant_id from request
+    quantity = data.get('quantity', 1)
+
+    if not all([user_id, menu_item_id, restaurant_id, quantity > 0]):
+        return jsonify({'error': 'Missing required fields'}), 400
+
+    try:
+        connection = get_db_connection()
+        with connection.cursor() as cursor:
+            # Verify the menu item belongs to the restaurant
+            cursor.execute("""
+                SELECT price, is_available 
+                FROM offers 
+                WHERE menu_item_id = %s AND restaurant_id = %s
+            """, (menu_item_id, restaurant_id))
+            
+            offer = cursor.fetchone()
+            if not offer:
+                return jsonify({'error': 'Invalid menu item for this restaurant'}), 400
+            
+            if not offer['is_available']:
+                return jsonify({'error': 'This item is currently unavailable'}), 400
+
+            # Check if user has items from a different restaurant
+            cursor.execute("""
+                SELECT DISTINCT restaurant_id 
+                FROM cart 
+                WHERE user_id = %s AND restaurant_id != %s
+            """, (user_id, restaurant_id))
+            
+            different_restaurant = cursor.fetchone()
+            if different_restaurant:
+                return jsonify({'error': 'You can only add items from one restaurant at a time. Please clear your cart first.'}), 400
+
+            # Check if item already exists in cart
+            cursor.execute("""
+                SELECT cart_id, quantity 
+                FROM cart 
+                WHERE user_id = %s AND menu_item_id = %s AND restaurant_id = %s
+            """, (user_id, menu_item_id, restaurant_id))
+            
+            existing_item = cursor.fetchone()
+
+            if existing_item:
+                # Update quantity if item exists
+                new_quantity = existing_item['quantity'] + quantity
+                cursor.execute("""
+                    UPDATE cart 
+                    SET quantity = %s 
+                    WHERE cart_id = %s
+                """, (new_quantity, existing_item['cart_id']))
+            else:
+                # Insert new item
+                cursor.execute("""
+                    INSERT INTO cart (user_id, menu_item_id, restaurant_id, quantity) 
+                    VALUES (%s, %s, %s, %s)
+                """, (user_id, menu_item_id, restaurant_id, quantity))
+
+            connection.commit()
+
+            # Get updated cart count
+            cursor.execute("SELECT COUNT(*) as count FROM cart WHERE user_id = %s", (user_id,))
+            cart_count = cursor.fetchone()['count']
+
+            return jsonify({
+                'message': 'Item added to cart successfully',
+                'cartCount': cart_count
+            }), 200
+
+    except Exception as e:
+        logging.error(f"Error adding to cart: {e}")
+        return jsonify({'error': str(e)}), 500
+    finally:
+        if connection:
+            connection.close()
+
 @app.route('/cart/items', methods=['GET'])
 def get_cart_items():
     user_id = request.args.get('user_id')
@@ -171,92 +252,40 @@ def get_cart_items():
         connection = get_db_connection()
         with connection.cursor() as cursor:
             sql = """
-            SELECT c.cart_id, c.menu_item_id,mi.item_name, mi.description, o.price, c.quantity
+            SELECT 
+                c.cart_id,
+                c.menu_item_id,
+                c.restaurant_id,
+                mi.item_name,
+                mi.description,
+                o.price,
+                c.quantity
             FROM cart c
             JOIN menu_items mi ON c.menu_item_id = mi.menu_item_id
-            JOIN offers o ON c.menu_item_id = o.menu_item_id AND c.restaurant_id = o.restaurant_id
+            JOIN offers o ON c.menu_item_id = o.menu_item_id 
+                AND c.restaurant_id = o.restaurant_id
             WHERE c.user_id = %s
+            ORDER BY c.cart_id
             """
             cursor.execute(sql, (user_id,))
             cart_items = cursor.fetchall()
 
             if not cart_items:
-                return jsonify({'message': 'Cart is empty'}), 200
+                return jsonify([]), 200
+
+            # Convert decimal values to float for JSON serialization
+            for item in cart_items:
+                if 'price' in item:
+                    item['price'] = float(item['price'])
 
             return jsonify(cart_items), 200
+            
     except Exception as e:
         logging.error(f"Error fetching cart items: {e}")
         return jsonify({'error': 'Failed to fetch cart items. Please try again later.'}), 500
     finally:
-        connection.close()
-
-
-@app.route('/cart/add', methods=['POST'])
-def add_to_cart():
-    data = request.json
-    user_id = data.get('user_id')
-    menu_item_id = data.get('menu_item_id')
-    quantity = data.get('quantity', 1)
-
-    if not user_id or not menu_item_id or quantity < 1:
-        return jsonify({'error': 'user_id, menu_item_id are required and quantity must be positive'}), 400
-
-    try:
-        connection = get_db_connection()
-        with connection.cursor() as cursor:
-            # Fetch the restaurant_id for the given menu_item_id
-            cursor.execute("SELECT restaurant_id FROM offers WHERE menu_item_id = %s LIMIT 1", (menu_item_id,))
-            result = cursor.fetchone()
-            if not result:
-                return jsonify({'error': 'Invalid menu item; no associated restaurant found'}), 400
-            restaurant_id = result['restaurant_id']
-
-            # Attempt to insert or update the item in the cart
-            cursor.execute(
-                """
-                INSERT INTO cart (user_id, menu_item_id, restaurant_id, quantity)
-                VALUES (%s, %s, %s, %s)
-                ON DUPLICATE KEY UPDATE quantity = quantity + %s
-                """,
-                (user_id, menu_item_id, restaurant_id, quantity, quantity)
-            )
-            connection.commit()
-        return jsonify({'message': 'Item added to cart', 'status': 202})
-    except pymysql.MySQLError  as e:
-        # Check if the error is due to the trigger enforcing a one-restaurant rule
-        if e.args[0]==1644:  # This indicates the custom error signal from the trigger
-            logging.error("One-restaurant constraint triggered: User tried to add items from different restaurants")
-            return jsonify({'error': 'You can only add items from one restaurant to the cart at a time.'}),400
-        else:
-            logging.error(f"Error adding to cart: {e}")
-            return jsonify({'error': str(e), 'status': 500})
-    finally:
-        connection.close()
-
-
-
-@app.route('/cart/remove', methods=['DELETE'])
-def remove_from_cart():
-    data = request.json
-    print(data)
-    menu_item_id = data.get('menu_item_id')
-    user_id = data.get('user_id')
-
-    if not menu_item_id or not user_id:
-        logging.error(f"Missing data in request: menu_item_id={menu_item_id}, user_id={user_id}")
-        return jsonify({'error': 'menu_item_id and user_id are required'}), 400
-
-    try:
-        connection = get_db_connection()
-        with connection.cursor() as cursor:
-            cursor.execute("DELETE FROM cart WHERE menu_item_id = %s AND user_id = %s", (menu_item_id, user_id))
-            connection.commit()
-        return jsonify({'message': 'Item removed from cart'}), 200
-    except Exception as e:
-        logging.error(f"Error removing from cart: {e}")
-        return jsonify({'error': str(e)}), 500
-    finally:
-        connection.close()
+        if connection:
+            connection.close()
 
 @app.route('/cart/update', methods=['PUT'])
 def update_cart():
@@ -270,17 +299,90 @@ def update_cart():
     try:
         connection = get_db_connection()
         with connection.cursor() as cursor:
-            cursor.execute("UPDATE cart SET quantity = %s WHERE cart_id = %s", (quantity, cart_id))
+            # Verify cart item exists and get its details
+            cursor.execute("""
+                SELECT cart_id, user_id, menu_item_id, restaurant_id 
+                FROM cart 
+                WHERE cart_id = %s
+            """, (cart_id,))
+            cart_item = cursor.fetchone()
+            
+            if not cart_item:
+                return jsonify({'error': 'Cart item not found'}), 404
+
+            # Update the quantity
+            cursor.execute("""
+                UPDATE cart 
+                SET quantity = %s 
+                WHERE cart_id = %s
+            """, (quantity, cart_id))
+            
             connection.commit()
-        return jsonify({'message': 'Cart updated successfully'}), 200
+            return jsonify({'message': 'Cart updated successfully'}), 200
+
     except Exception as e:
         logging.error(f"Error updating cart: {e}")
+        return jsonify({'error': str(e)}), 500
+    finally:
+        if connection:
+            connection.close()
+
+
+@app.route('/cart/remove', methods=['DELETE'])
+def remove_from_cart():
+    data = request.json
+    menu_item_id = data.get('menu_item_id')
+    user_id = data.get('user_id')
+
+    if not menu_item_id or not user_id:
+        logging.error(f"Missing data in request: menu_item_id={menu_item_id}, user_id={user_id}")
+        return jsonify({'error': 'menu_item_id and user_id are required'}), 400
+
+    try:
+        connection = get_db_connection()
+        with connection.cursor() as cursor:
+            cursor.execute("DELETE FROM cart WHERE menu_item_id = %s AND user_id = %s", (menu_item_id, user_id))
+            connection.commit()
+
+            # Check if the cart is now empty
+            cursor.execute("SELECT COUNT(*) as item_count FROM cart WHERE user_id = %s", (user_id,))
+            cart_count = cursor.fetchone()['item_count']
+
+            if cart_count == 0:
+                # If cart is empty, we can optionally clear any associated data or flags
+                # For example, if you have a user_restaurant table:
+                # cursor.execute("DELETE FROM user_restaurant WHERE user_id = %s", (user_id,))
+                # connection.commit()
+                pass
+
+        return jsonify({'message': 'Item removed from cart'}), 200
+    except Exception as e:
+        logging.error(f"Error removing from cart: {e}")
         return jsonify({'error': str(e)}), 500
     finally:
         connection.close()
 
 
+@app.route('/cart/total', methods=['GET'])
+def get_cart_total():
+    user_id = request.args.get('user_id')
+    if not user_id:
+        return jsonify({'error': 'user_id is required'}), 400
 
+    try:
+        connection = get_db_connection()
+        with connection.cursor() as cursor:
+            # Use the calculate_cart_total function in MySQL to get the total
+            cursor.execute("SELECT calculate_cart_total(%s) AS total", (user_id,))
+            result = cursor.fetchone()
+            total = result['total'] if result and result['total'] is not None else 0.00
+
+        return jsonify({'total': total}), 200
+    except Exception as e:
+        logging.error(f"Error fetching cart total: {e}")
+        return jsonify({'error': 'Failed to fetch cart total. Please try again later.'}), 500
+    finally:
+        connection.close()
 
 
 
@@ -335,16 +437,21 @@ def add_user_address():
         return jsonify({'error': 'Failed to add address. Please try again later.'}), 500
     finally:
         connection.close()
+
 @app.route('/order/create', methods=['POST'])
 def create_order():
     data = request.get_json()
+    print(data)
     logging.debug(f"Received order data: {data}")
 
-    required_fields = ['user_id', 'address_id', 'menu_item_id', 'quantity', 'total']
+    required_fields = ['user_id', 'address_id']
     if not all(field in data for field in required_fields):
         logging.error("Missing required fields in order data.")
         return jsonify({'error': 'Missing required fields'}), 400
 
+    user_id = data['user_id']
+    address_id = data['address_id']
+    
     try:
         connection = get_db_connection()
         with connection.cursor() as cursor:
@@ -358,72 +465,92 @@ def create_order():
             """)
             delivery_person = cursor.fetchone()
             logging.debug(f"Queried delivery_person: {delivery_person}")
+            print(delivery_person)
             
             if not delivery_person:
                 logging.error("No delivery persons available")
                 return jsonify({'error': 'No delivery persons available'}), 503
-
-            # Get restaurant_id for the menu item
-            cursor.execute("""
-                SELECT restaurant_id 
-                FROM offers 
-                WHERE menu_item_id = %s
-            """, (int(data['menu_item_id'])))
-            restaurant = cursor.fetchone()
             
-            if not restaurant:
-                logging.error("Restaurant not found for the given menu item")
-                return jsonify({'error': 'Restaurant not found for the given menu item'}), 404
+            # Use the function to calculate the total cost for the cart
+            cursor.execute(f"SELECT calculate_cart_total({user_id}) as Total")
+            total_cost = round(float(cursor.fetchone()['Total']),2)
+            print(total_cost)
+            
+            if total_cost is None or total_cost == 0:
+                return jsonify({'error': 'Cart is empty'}), 400
+
+            logging.debug(f"Total cost for the order: {total_cost}")
+
+            # Get the restaurant_id from the cart (assuming all items are from the same restaurant)
+            cursor.execute("""
+                SELECT restaurant_id as r_id
+                FROM cart 
+                WHERE user_id = %s
+                LIMIT 1
+            """, (user_id,))
+            restaurant_id = int(cursor.fetchone()['r_id'])
+            print(restaurant_id)
 
             # Create the order
-            cursor.execute("""
+            cursor.execute(f"""
                 INSERT INTO orders (
-                    user_id, restaurant_id, menu_item_id, delivery_person_id, 
+                    user_id, restaurant_id, address_id, delivery_person_id, 
                     total, order_status
-                ) VALUES (%s, %s, %s, %s, %s, 'pending')
-            """, (
-                data['user_id'],
-                restaurant['restaurant_id'],
-                data['menu_item_id'],
-                delivery_person['delivery_person_id'],
-                data['total']
-            ))
+                ) VALUES ({user_id}, {restaurant_id}, {address_id}, {delivery_person['delivery_person_id']}, {total_cost}, 'pending')
+            """)
             order_id = cursor.lastrowid
+
+            # Insert each item into order_items
+            cursor.execute("""
+                SELECT c.menu_item_id, quantity, price 
+                FROM cart c
+                JOIN offers o ON c.menu_item_id = o.menu_item_id AND c.restaurant_id = o.restaurant_id
+                WHERE c.user_id = %s
+            """%(user_id,))
+            cart_items = cursor.fetchall()
+            print(cart_items)
+
+
+            for item in cart_items:
+                cursor.execute("""
+                    INSERT INTO order_items (order_id, menu_item_id, restaurant_id, quantity, price) 
+                    VALUES (%s, %s, %s, %s, %s)
+                """%(
+                    order_id,
+                    item['menu_item_id'],
+                    restaurant_id,
+                    item['quantity'],
+                    item['price']
+                ))
+
+            # Clear the cart after order is placed
+            cursor.execute("DELETE FROM cart WHERE user_id = %s"%(user_id,))
 
             # Update delivery person status
             cursor.execute("""
                 UPDATE delivery_person 
                 SET status = 'assigned' 
                 WHERE delivery_person_id = %s
-            """, (int(delivery_person['delivery_person_id'])))
-
-            cursor.execute(f"""
-                SELECT order_id FROM orders where user_id={int(data['user_id'])} 
-                and restaurant_id={int(restaurant['restaurant_id'])}
-                and menu_item_id={int(data['menu_item_id'])}
-                and delivery_person_id={int(delivery_person['delivery_person_id'])}
-                and total={float(data['total'])}
-                limit 1
-                           """)
-            order_id=cursor.fetchone()
+            """%(delivery_person['delivery_person_id'],))
 
             connection.commit()
             
             return jsonify({
                 'message': 'Order created successfully',
-                'order_id': order_id['order_id'],
-                'payment_required': True,
-                'status_code':200
+                'order_id': order_id,
+                'total_cost': total_cost,
+                'payment_required': True
             }), 201
 
     except Exception as e:
         logging.error(f"Error creating order: {e}")
         if connection:
             connection.rollback()
-        return jsonify({'error': type(e)}), 500
+        return jsonify({'error': 'Failed to create order'}), 500
     finally:
         if connection:
             connection.close()
+
 
 
 

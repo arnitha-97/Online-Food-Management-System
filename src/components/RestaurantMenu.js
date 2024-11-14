@@ -9,6 +9,7 @@ export default function RestaurantMenu({ addToCart, cartItems, setCartItems }) {
   const [menuItems, setMenuItems] = useState([]);
   const [searchTerm, setSearchTerm] = useState('');
   const [notification, setNotification] = useState(null);
+  const [loading, setLoading] = useState(false);
 
   useEffect(() => {
     const fetchMenuItems = async () => {
@@ -17,55 +18,62 @@ export default function RestaurantMenu({ addToCart, cartItems, setCartItems }) {
         setMenuItems(response.data);
       } catch (error) {
         console.error('Error fetching menu items:', error);
+        setNotification('Failed to load menu items');
       }
     };
     fetchMenuItems();
   }, [restaurantId]);
 
+  const handleAddToCart = async (item) => {
+    const userId = localStorage.getItem('userId');
+    if (!userId) {
+      setNotification('Please login to add items to cart');
+      return;
+    }
+
+    setLoading(true);
+    try {
+      const response = await axios.post('http://localhost:5000/cart/add', {
+        user_id: userId,
+        menu_item_id: item.menu_item_id,
+        restaurant_id: parseInt(restaurantId),
+        quantity: 1
+      });
+
+      if (response.status === 200 || response.status === 202) {
+        // Refresh cart items
+        const cartResponse = await axios.get(`http://localhost:5000/cart/items?user_id=${userId}`);
+        setCartItems(cartResponse.data);
+        setNotification('Item added to cart successfully');
+      }
+    } catch (error) {
+      console.error('Error adding item to cart:', error);
+      if (error.response?.data?.error) {
+        setNotification(error.response.data.error);
+      } else {
+        setNotification('Error adding item to cart');
+      }
+    } finally {
+      setLoading(false);
+      setTimeout(() => setNotification(null), 3000);
+    }
+  };
+
   const filteredItems = menuItems.filter(item =>
     item.item_name.toLowerCase().includes(searchTerm.toLowerCase())
   );
-
-  const handleAddToCart = async (item) => {
-    const userId = localStorage.getItem('userId');
-    try {
-        const response = await axios.post('http://localhost:5000/cart/add', {
-            user_id: userId,
-            menu_item_id: item.menu_item_id,
-            quantity: 1
-        });
-
-        if (response.status === 202) {
-            setNotification('Item added to cart');
-        }
-        setTimeout(() => setNotification(null), 3000);
-
-        // Refresh cartItems to reflect changes
-        const cartResponse = await axios.get(`http://localhost:5000/cart/items?user_id=${userId}`);
-        setCartItems(cartResponse.data);
-    } catch (error) {
-        if (error.response && error.response.status === 400) {
-            setNotification(error.response.data.error);
-        } else {
-            console.error('Error adding item to cart:', error);
-            setNotification('Error adding item to cart.');
-        }
-        setTimeout(() => setNotification(null), 3000); // Clear notification after 3 seconds
-    }
-};
-
-
-
 
   return (
     <div className="restaurant-menu">
       <div className="menu-container">
         <nav className="menu-nav">
-          <h1 className="menu-title">Menu Items</h1>
-          <Link to="/cart" className="cart-icon">
-            <ShoppingCart size={24} />
-            {cartItems.length > 0 && <span className="cart-count">{cartItems.length}</span>}
-          </Link>
+          <div className="menu-nav-content">
+            <h1 className="menu-title">Menu Items</h1>
+            <Link to="/cart" className="cart-icon">
+              <ShoppingCart size={24} />
+              {cartItems.length > 0 && <span className="cart-count">{cartItems.length}</span>}
+            </Link>
+          </div>
         </nav>
 
         <div className="search-bar">
@@ -86,9 +94,7 @@ export default function RestaurantMenu({ addToCart, cartItems, setCartItems }) {
                 <p className="description">{item.description || "Description not available"}</p>
                 <div className="item-details">
                   <p className="price">
-                    {item.price != null && !isNaN(item.price) 
-                      ? `$${Number(item.price).toFixed(2)}` 
-                      : 'Price not available'}
+                    ${parseFloat(item.price).toFixed(2)}
                   </p>
                   <p className={`status ${item.availability?.toLowerCase() || 'unavailable'}`}>
                     {item.availability || 'Unavailable'}
@@ -98,7 +104,7 @@ export default function RestaurantMenu({ addToCart, cartItems, setCartItems }) {
               <button 
                 className="add-to-cart"
                 onClick={() => handleAddToCart(item)}
-                disabled={item.availability?.toLowerCase() !== 'available'}
+                disabled={loading || item.availability?.toLowerCase() !== 'available'}
               >
                 <Plus size={16} />
                 Add to Cart
@@ -106,17 +112,19 @@ export default function RestaurantMenu({ addToCart, cartItems, setCartItems }) {
             </div>
           ))}
         </div>
-      </div>
 
-      {notification && (
-        <div className="notification">
-          <p>{notification}</p>
-          <div className="notification-buttons">
-            <Link to="/cart" className="notification-button">View Cart</Link>
-            <Link to="/checkout" className="notification-button">Proceed to Checkout</Link>
+        {notification && (
+          <div className="notification">
+            <p>{notification}</p>
+            <div className="notification-buttons">
+              <Link to="/cart" className="notification-button">View Cart</Link>
+              <button onClick={() => setNotification(null)} className="notification-button">
+                Close
+              </button>
+            </div>
           </div>
-        </div>
-      )}
+        )}
+      </div>
     </div>
   );
 }

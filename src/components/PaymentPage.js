@@ -1,31 +1,37 @@
-import React, { useState } from 'react'
-import { QRCodeCanvas } from 'qrcode.react'
-import { ArrowRight, Loader2 } from 'lucide-react'
-import axios from 'axios'
-import { useNavigate } from 'react-router-dom'; // Import useNavigate
-import './PaymentPage.css'
+import React, { useState, useEffect } from 'react';
+import { QRCodeCanvas } from 'qrcode.react';
+import { ArrowRight, Loader2 } from 'lucide-react';
+import axios from 'axios';
+import { useNavigate, useLocation } from 'react-router-dom'; // Import useLocation
+import './PaymentPage.css';
 
-export default function PaymentPage({ orderId }) {
-  const [isLoading, setIsLoading] = useState(false)
+export default function PaymentPage() {
+  const [isLoading, setIsLoading] = useState(false);
   const navigate = useNavigate(); // Initialize useNavigate
+  const location = useLocation(); // Initialize useLocation to access passed state
+  const { orderId, total } = location.state || {}; // Destructure orderId and total from location.state
+
+  useEffect(() => {
+    if (!orderId || !total) {
+      alert('Order details are missing.');
+      navigate('/');
+    }
+  }, [orderId, total, navigate]);
 
   const handleTrackOrder = async () => {
     try {
       setIsLoading(true);
-      const order_id=localStorage.getItem('order_id')
-      const response = await axios.get(`http://localhost:5000/order/${order_id}/track`);
+      const response = await axios.get(`http://localhost:5000/order/${orderId}/track`);
       if (response.data.status) {
         // Navigate to OrderTrackingPage with the orderId
-        navigate(`/order/${order_id}/track`, { 
-    
-        });
+        navigate(`/order/${orderId}/track`);
       }
     } catch (error) {
       console.error('Error tracking order:', error);
     } finally {
       setIsLoading(false);
     }
-  }
+  };
 
   return (
     <div className="payment-page">
@@ -34,11 +40,11 @@ export default function PaymentPage({ orderId }) {
           <h1 className="title">Scan to Pay</h1>
           <div className="status-badge">Pending</div>
         </div>
-        
+
         <div className="qr-wrapper">
           <div className="qr-container">
             <QRCodeCanvas 
-              value="Pay Now"
+              value={`Pay Now: Order ${orderId}`} // Displaying orderId in the QR code value (or any other value)
               size={256}
               level="H"
               includeMargin={true}
@@ -76,5 +82,5 @@ export default function PaymentPage({ orderId }) {
         </button>
       </div>
     </div>
-  )
+  );
 }

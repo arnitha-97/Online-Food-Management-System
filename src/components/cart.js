@@ -5,79 +5,69 @@ import { useNavigate } from 'react-router-dom';
 import './Cart.css';
 
 const Cart = () => {
-  const [cartItems, setCartItems] = useState([]);
+  const [cartItems, setCartItems] = useState([]); // Initialize as an empty array
+  const [total, setTotal] = useState(0);
   const navigate = useNavigate();
 
-  // Fetch cart data on component mount
   useEffect(() => {
     const getData = async () => {
       const userId = localStorage.getItem('userId');
       if (userId) {
         try {
           const cartResponse = await axios.get(`http://localhost:5000/cart/items?user_id=${userId}`);
-          console.log(cartResponse.data)
-          setCartItems(cartResponse.data);
-          console.log(cartResponse)
+          setCartItems(Array.isArray(cartResponse.data) ? cartResponse.data : []); // Ensure cartItems is always an array
+          const totalResponse = await axios.get(`http://localhost:5000/cart/total?user_id=${userId}`);
+          setTotal(Number(totalResponse.data.total) || 0);
         } catch (error) {
-          console.error('Error fetching cart items:', error);
+          console.error('Error fetching cart data:', error);
+          setCartItems([]); // Set as empty array in case of error
         }
       }
     };
     getData();
   }, []);
 
-const updateQuantity = async (cartId, newQuantity) => {
-  if (newQuantity <= 0) {
-    await removeItem(cartId);
-  } else {
-    setCartItems(prevItems => {
-      const updatedItems = prevItems.map(item => {
-        if (item.cart_id === cartId) {
-          return { ...item, quantity: newQuantity }; // Update the quantity for the specific item
-        }
-        return item; // Leave other items unchanged
-      });
-      return updatedItems;
-    });
+  const updateQuantity = async (cartId, newQuantity) => {
+    const userId = localStorage.getItem('userId');
+    if (newQuantity <= 0) {
+      await removeItem(cartId);
+    } else {
+      setCartItems(prevItems =>
+        prevItems.map(item =>
+          item.cart_id === cartId ? { ...item, quantity: newQuantity } : item
+        )
+      );
 
-    try {
-      await axios.put('http://localhost:5000/cart/update', {
-        cart_id: cartId,
-        quantity: newQuantity
-      });
-    } catch (error) {
-      console.error('Error updating cart:', error);
+      try {
+        await axios.put('http://localhost:5000/cart/update', {
+          cart_id: cartId,
+          quantity: newQuantity
+        });
+
+        const totalResponse = await axios.get(`http://localhost:5000/cart/total?user_id=${userId}`);
+        setTotal(totalResponse.data.total);
+      } catch (error) {
+        console.error('Error updating cart:', error);
+      }
     }
-  }
-};
+  };
 
+  const removeItem = async (itemId) => {
+    const userId = localStorage.getItem('userId');
+    try {
+      await axios.delete('http://localhost:5000/cart/remove', {
+        headers: { 'Content-Type': 'application/json' },
+        data: { menu_item_id: itemId, user_id: userId }
+      });
 
-  // Function to remove an item from the cart
-const removeItem = async (itemId) => {
-  console.log('Removing item with menu_item_id:', itemId);
-  const userId = localStorage.getItem('userId');
-  
-  try {
-    await axios.delete('http://localhost:5000/cart/remove', {
-      headers: { 'Content-Type': 'application/json' },
-      data: { menu_item_id: itemId, user_id: userId }
-    });
-    
-    // After a successful backend response, update the state
-    setCartItems(prevItems => prevItems.filter(item => item.menu_item_id !== itemId));
-  } catch (error) {
-    console.error('Error removing item from cart:', error);
-  }
-};
+      setCartItems(prevItems => prevItems.filter(item => item.menu_item_id !== itemId));
+      const totalResponse = await axios.get(`http://localhost:5000/cart/total?user_id=${userId}`);
+      setTotal(totalResponse.data.total);
+    } catch (error) {
+      console.error('Error removing item from cart:', error);
+    }
+  };
 
-  // Calculate total price of items in the cart
-  const total = cartItems.reduce((sum, item) => {
-    const itemPrice = parseFloat(item.price) || 0;
-    const itemQuantity = parseInt(item.quantity) || 1;
-    return sum + (itemPrice * itemQuantity);
-  }, 0);
-
-  // Navigate to checkout
   const handleProceedToCheckout = () => {
     navigate('/checkout', { state: { cartItems, total } });
   };
@@ -94,7 +84,7 @@ const removeItem = async (itemId) => {
       ) : (
         <>
           <div className="cart-items">
-            {cartItems.map((item,index) => (
+            {Array.isArray(cartItems) && cartItems.map((item) => (
               <div key={item.menu_item_id} className="cart-item">
                 <div className="item-details">
                   <h3>{item.item_name}</h3>
@@ -119,7 +109,7 @@ const removeItem = async (itemId) => {
           <div className="cart-summary">
             <div className="cart-total">
               <h3>Total:</h3>
-              <h3>${total.toFixed(2)}</h3>
+              <h3>${Number(total).toFixed(2)}</h3>
             </div>
             <button className="checkout-button" onClick={handleProceedToCheckout}>
               Proceed to Checkout

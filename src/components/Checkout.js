@@ -16,12 +16,14 @@ const Checkout = ({ clearCart }) => {
   });
   const [loading, setLoading] = useState(false);
   const [addingAddress, setAddingAddress] = useState(false);
+  const [total, setTotal] = useState(0); // New total state for backend fetched total
   const location = useLocation();
   const navigate = useNavigate();
-  const { cartItems, total } = location.state || { cartItems: [], total: 0 };
+  const { cartItems } = location.state || { cartItems: [] }; // Relying on location state for cart items
 
   useEffect(() => {
-    fetchAddresses();
+    fetchAddresses();  // Existing function to fetch addresses
+    fetchCartTotal();  // New function to fetch total from backend
   }, []);
 
   const fetchAddresses = async () => {
@@ -43,29 +45,52 @@ const Checkout = ({ clearCart }) => {
     }
   };
 
+  const fetchCartTotal = async () => {
+    const userId = localStorage.getItem('userId');
+    try {
+      const response = await axios.get(`http://localhost:5000/cart/total?user_id=${userId}`);
+      const fetchedTotal = response.data.total;
+      setTotal(Number(fetchedTotal) || 0);
+    } catch (error) {
+      console.error('Error fetching cart total:', error);
+      setTotal(0);
+    }
+  };
+
   const handleAddressChange = (e) => {
     const { name, value } = e.target;
-    setNewAddress(prevAddress => ({
+    setNewAddress((prevAddress) => ({
       ...prevAddress,
-      [name]: value,
+      [name]: value
     }));
   };
 
   const handleAddressSubmit = async (e) => {
     e.preventDefault();
     setAddingAddress(true);
+    const userId = localStorage.getItem('userId');
+
     try {
       const response = await axios.post('http://localhost:5000/user/address', {
-        user_id: localStorage.getItem('userId'),
-        ...newAddress
+        ...newAddress,
+        user_id: userId
       });
-      
-      setAddresses([...addresses, response.data]);
-      setSelectedAddress(response.data.address_id);
-      setNewAddress({ address: '', city: '', state: '', postal_code: '', country: '' });
+      if (response.data && response.data.address_id) {
+        setAddresses((prevAddresses) => [...prevAddresses, response.data]);
+        setSelectedAddress(response.data.address_id);
+        setNewAddress({
+          address: '',
+          city: '',
+          state: '',
+          postal_code: '',
+          country: ''
+        });
+      } else {
+        alert('Failed to add address. Please try again.');
+      }
     } catch (error) {
       console.error('Error adding address:', error);
-      alert('Failed to add address. Please try again later.');
+      alert('Error adding address. Please try again later.');
     } finally {
       setAddingAddress(false);
     }
@@ -76,38 +101,30 @@ const Checkout = ({ clearCart }) => {
       alert('Please select an address before proceeding.');
       return;
     }
-  
     setLoading(true);
+    const restaurantId = cartItems[0]?.restaurant_id; 
+    let response;
     try {
-      // Process each item in the cart as an individual order
       for (const item of cartItems) {
         const orderData = {
           user_id: localStorage.getItem('userId'),
           address_id: selectedAddress,
-          menu_item_id: item.menu_item_id,
-          quantity: item.quantity,
-          total: item.price * item.quantity,
+          restaurant_id: restaurantId,
+          total:total,
+          order_items: cartItems.map(item => ({
+            menu_item_id: item.menu_item_id,
+            quantity: item.quantity,
+            price: item.price
+          }))
         };
-        console.log("Order Data:", orderData); // Log the order data for debugging
-        
-        // Use POST request to create the order
         const response = await axios.post('http://localhost:5000/order/create', orderData);
-        
-        if (response.data && response.data.status_code === 200) {
-          localStorage.setItem('order_id', response.data.order_id); 
-          console.log("order_id:", response.data.order_id);
-        } else {
-          console.error("Unexpected response data:", response.data);
+        if (!response.data || response.data.status_code !== 200) {
           alert('Failed to create order. Please try again.');
+          return;
         }
       }
-  
       clearCart();
-      navigate('/payment', { 
-        state: { 
-          total: total
-        }
-      });
+      navigate('/payment', { state: { orderId: response.data.order_id, total: total } });
     } catch (error) {
       console.error('Error creating order:', error);
       alert('Order creation failed. Please try again later.');
@@ -115,8 +132,6 @@ const Checkout = ({ clearCart }) => {
       setLoading(false);
     }
   };
-  
-  
 
   return (
     <div className="checkout-container">
@@ -241,7 +256,7 @@ const Checkout = ({ clearCart }) => {
           </div>
           <div className="total">
             <strong>Total:</strong>
-            <span>${total.toFixed(2)}</span>
+            <span>${Number(total).toFixed(2)}</span>
           </div>
           <button
             onClick={handleCheckout}
