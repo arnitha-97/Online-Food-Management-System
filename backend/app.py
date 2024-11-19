@@ -3,6 +3,7 @@ import pymysql
 from flask_cors import CORS
 import logging
 from decimal import Decimal
+import time
 
 
 app = Flask(__name__)
@@ -552,8 +553,6 @@ def create_order():
             connection.close()
 
 
-
-
 @app.route('/order/<int:order_id>/pay', methods=['POST'])
 def update_order_payment(order_id):
     try:
@@ -571,43 +570,19 @@ def update_order_payment(order_id):
     finally:
         connection.close()
 
-@app.route('/order/<int:order_id>/status', methods=['GET', 'POST'])
-def handle_order_status(order_id):
+@app.route('/order/<int:order_id>/status', methods=['GET'])
+def get_order_status(order_id):
     try:
         connection = get_db_connection()
         with connection.cursor() as cursor:
-            if request.method == 'GET':
-                # Get current order status
-                cursor.execute("SELECT order_status FROM orders WHERE order_id = %s", (order_id,))
-                order = cursor.fetchone()
-                
-                if not order:
-                    return jsonify({'error': 'Order not found'}), 404
-                
-                return jsonify({'status': order['order_status']}), 200
-            
-            elif request.method == 'POST':
-                # Update order status
-                new_status = request.json.get('status')
-                if not new_status:
-                    return jsonify({'error': 'New status is required'}), 400
-                
-                valid_statuses = ['pending', 'preparing', 'out_for_delivery', 'delivered']
-                if new_status not in valid_statuses:
-                    return jsonify({'error': 'Invalid status'}), 400
-                
-                cursor.execute(
-                    "UPDATE orders SET order_status = %s WHERE order_id = %s",
-                    (new_status, order_id)
-                )
-                cursor.callproc('update_order_status_procedure', [order_id])
-                connection.commit()
-                
-                return jsonify({'message': 'Order status updated successfully', 'status': new_status}), 200
-    
+            cursor.execute("SELECT order_status FROM orders WHERE order_id = %s", (order_id,))
+            order = cursor.fetchone()
+            if not order:
+                return jsonify({'error': 'Order not found'}), 404
+            return jsonify({'status': order['order_status']}), 200
     except Exception as e:
-        logging.error(f"Error handling order status: {e}")
-        return jsonify({'error': 'Failed to handle order status'}), 500
+        logging.error(f"Error fetching order status: {e}")
+        return jsonify({'error': 'Failed to fetch order status'}), 500
     finally:
         if connection:
             connection.close()
@@ -618,50 +593,29 @@ def track_order(order_id):
         connection = get_db_connection()
         with connection.cursor() as cursor:
             # Fetch the current order status
-            cursor.execute("""
-                SELECT order_status
-                FROM orders
-                WHERE order_id = %s LIMIT 1
-            """, (order_id,))
-            
+            cursor.execute("SELECT order_status FROM orders WHERE order_id = %s", (order_id,))
             order = cursor.fetchone()
-            
+
             if not order:
-                logging.error(f"Order {order_id} not found.")
                 return jsonify({'error': 'Order not found'}), 404
 
-            # Check if the order is already delivered or in a final state
-            if order['order_status'] == 'delivered':
-                return jsonify({'status': order['order_status']}), 200
+            current_status = order['order_status']
 
-            # Log and proceed to call the stored procedure
-            logging.debug(f"Calling procedure for order {order_id} with current status: {order['order_status']}")
-            cursor.callproc('update_order_status_procedure', [order_id])
-            connection.commit()
+            # Call the stored procedure only if the order is not yet delivered
+            if current_status != 'delivered':
+                cursor.callproc('update_order_status_procedure', [order_id])
+                connection.commit()
 
-            # Refresh the order status after calling the procedure
-            cursor.execute("""
-                SELECT order_status
-                FROM orders
-                WHERE order_id = %s LIMIT 1
-            """, (order_id,))
-            updated_order = cursor.fetchone()
+                # Fetch the updated status after the procedure execution
+                cursor.execute("SELECT order_status FROM orders WHERE order_id = %s", (order_id,))
+                order = cursor.fetchone()
 
-            logging.debug(f"Updated order status for {order_id}: {updated_order['order_status']}")
-            print(updated_order['order_status'])
-            return jsonify(updated_order), 200
-    
+            # Return the status
+            return jsonify({'status': order['order_status']}), 200
     except Exception as e:
         logging.error(f"Error tracking order: {e}")
         return jsonify({'error': 'Failed to track order'}), 500
     finally:
         if connection:
             connection.close()
-
-
-
-if __name__ == '__main__':
-    app.run(debug=True)
-
-
 

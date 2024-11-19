@@ -101,30 +101,35 @@ const Checkout = ({ clearCart }) => {
       alert('Please select an address before proceeding.');
       return;
     }
+  
     setLoading(true);
-    const restaurantId = cartItems[0]?.restaurant_id; 
-    let response;
+    const restaurantId = cartItems[0]?.restaurant_id;
+  
     try {
-      for (const item of cartItems) {
-        const orderData = {
-          user_id: localStorage.getItem('userId'),
-          address_id: selectedAddress,
-          restaurant_id: restaurantId,
-          total:total,
-          order_items: cartItems.map(item => ({
-            menu_item_id: item.menu_item_id,
-            quantity: item.quantity,
-            price: item.price
-          }))
-        };
-        const response = await axios.post('http://localhost:5000/order/create', orderData);
-        if (!response.data || response.data.status_code !== 200) {
-          alert('Failed to create order. Please try again.');
-          return;
-        }
+      const orderData = {
+        user_id: localStorage.getItem('userId'),
+        address_id: selectedAddress,
+        restaurant_id: restaurantId,
+        total: total,
+        order_items: cartItems.map(item => ({
+          menu_item_id: item.menu_item_id,
+          quantity: item.quantity,
+          price: item.price
+        }))
+      };
+  
+      // Create order with backend
+      const response = await axios.post('http://localhost:5000/order/create', orderData);
+  
+      if (response.data && response.data.order_id) {
+        // Clear cart, navigate to payment page
+        clearCart();
+        console.log("Navigating to PaymentPage with orderId:", response.data.order_id);
+        navigate('/payment', { state: { orderId: response.data.order_id, total: total } });
+      } else {
+        alert('Order creation failed. Please try again.');
       }
-      clearCart();
-      navigate('/payment', { state: { orderId: response.data.order_id, total: total } });
+  
     } catch (error) {
       console.error('Error creating order:', error);
       alert('Order creation failed. Please try again later.');
@@ -132,6 +137,7 @@ const Checkout = ({ clearCart }) => {
       setLoading(false);
     }
   };
+  
 
   return (
     <div className="checkout-container">

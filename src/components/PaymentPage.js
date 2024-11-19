@@ -12,6 +12,7 @@ export default function PaymentPage() {
   const { orderId, total } = location.state || {}; // Destructure orderId and total from location.state
 
   useEffect(() => {
+    console.log("Received orderId:", orderId, "and total:", total);
     if (!orderId || !total) {
       alert('Order details are missing.');
       navigate('/');
@@ -21,17 +22,16 @@ export default function PaymentPage() {
   const handleTrackOrder = async () => {
     try {
       setIsLoading(true);
-      const response = await axios.get(`http://localhost:5000/order/${orderId}/track`);
-      if (response.data.status) {
-        // Navigate to OrderTrackingPage with the orderId
-        navigate(`/order/${orderId}/track`);
-      }
+      localStorage.setItem('order_id', orderId);
+      navigate(`/order/${orderId}/track`);
     } catch (error) {
       console.error('Error tracking order:', error);
     } finally {
       setIsLoading(false);
     }
   };
+
+  
 
   return (
     <div className="payment-page">
